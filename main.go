@@ -19,11 +19,12 @@ import (
     "os"
     "image"
     "log"
-    "math"
+    // "math"
     "image/color"
     "errors"
     "image/png"
     "image/jpeg"
+    "github.com/montanaflynn/stats"
 )
 
 // Pixel struct example
@@ -77,7 +78,10 @@ func rgbToGreyscale(img image.Image) image.Image {
     return grayImg
 }
 
-func imageTotensor(img image.Image) *[][]color.Color {
+func imageTotensor(img image.Image) (*[][]color.Color, image.Point) {
+
+    fmt.Println("> Image to Tensor...");
+
     size := img.Bounds().Size()
     var pixels [][]color.Color
     //put pixels into two dimensional array
@@ -89,48 +93,129 @@ func imageTotensor(img image.Image) *[][]color.Color {
       pixels = append(pixels,y)
     }
 
-    return &pixels
+    fmt.Println("< Done");
+
+    return &pixels, size
 }
 
-func convolution(img image.Image, encoding string) {
+func tensorToImage(pixels [][]color.Color) image.Image {
 
-}
+    fmt.Println("> Tensor to Image...");
 
-func applyGaussuian(pixels *[][]color.Color, sigma float64) {
+    rect := image.Rect(0,0,len(pixels),len(pixels[0]))
+    newImage := image.NewRGBA(rect)
 
-    guassian_sum := 0.0
-
-    // gaussian filter with 5 x 5 kernel
-    k_size := int((4 * sigma * 0.5) + 1)
-    // create filter empty slice
-    gaussian_filter := make([][]float32, k_size)
-    for i := range gaussian_filter {
-        gaussian_filter[i] = make([]float32, k_size)
-    }
-
-    sig2 := 1.0
-    sig22 := 2 * sig2
-    x1 := (1/ (math.Pi * sig22))
-
-    // gaussian continous sample matrix
-    for y := 1; y < k_size+1; y++ {
-        for x := 1; x < k_size+1; x++ {
-            sum := math.Pow(float64(x - k_size+2), 2) + math.Pow(float64(y - k_size+2), 2)
-            x2 := math.Exp(-(sum) / sig22)
-            gaussian_filter[y-1][x-1] = float32(x1 * x2)
-            guassian_sum += x1 * x2
+    for x:=0; x<len(pixels); x++{
+        for y:=0; y<len(pixels[0]); y++ {
+            q:=pixels[x]
+            if q==nil{
+                continue
+            }
+            p := pixels[x][y]
+            if p==nil{
+                continue
+            }
+            original,ok := color.RGBAModel.Convert(p).(color.RGBA)
+            if ok{
+                newImage.Set(x,y,original)
+            }
         }
     }
 
-    // Discretization-> gaussian matri
-    for y := 0; y < k_size; y++ {
-        for x := 0; x < k_size; x++ {
-            gaussian_filter[y][x] /= float32(guassian_sum)
+    fmt.Println("< Done");
+    return newImage
+}
+
+func getGaussianKernel(size int, sigma float64) [][]uint32 {
+
+    fmt.Println("> Generating gaussian filter...");
+
+    // https://stackoverflow.com/questions/29731726/how-to-calculate-a-gaussian-kernel-matrix-efficiently-in-numpy
+    k_size := size
+    delta := (sigma * 2) / float64(k_size)
+    linspace := make([]float64, k_size+1)
+    cfd := make([]float64, len(linspace))
+
+    kern1d := make([]float64, len(linspace)-1)
+    kern2d := make([][]float64, len(kern1d))
+    gaussian_kernel := make([][]uint32, len(kern1d))
+
+    for i := range kern2d {
+        kern2d[i] = make([]float64, len(kern1d))
+        gaussian_kernel[i] = make([]uint32, len(gaussian_kernel))
+    }
+
+    // Normal cumulative distribution function
+    for i := range linspace {
+        linspace[i] = -sigma + delta * float64(i)
+        cfd[i] = stats.NormCdf(linspace[i], 0, delta)
+    }
+
+    for i := 0; i < len(linspace)-1; i++ {
+        kern1d[i] = cfd[i + 1] - cfd[i]
+    }
+
+    //outer product
+    kern2d_csum := 0.0
+    for i := range kern1d {
+        for j := range kern1d {
+            mult := kern1d[i] * kern1d[j]
+            kern2d[i][j] = mult
+            kern2d_csum += mult
         }
     }
 
-    // new image
+    // normalize
+    for i := range kern1d {
+        for j := range kern1d {
+            gaussian_kernel[i][j] = uint32((kern2d[i][j] / kern2d_csum) * 273)
+        }
+    }
 
+    fmt.Println("< Done");
+
+    return gaussian_kernel
+}
+
+func applyGaussuianFilter(size image.Point, oldImg *[][]color.Color, kernel *[][]uint32) *[][]color.Color {
+
+    fmt.Println("> Applying gaussian filter...");
+
+    nKer := *kernel
+    // pad := int(len(nKer) / 2)
+    newImg := make([][]color.Color, size.Y)
+    for i := range newImg {
+        newImg[i] = make([]color.Color, size.X)
+    }
+
+    copy(newImg, *oldImg)
+
+    // iterate over imge
+    for y := len(nKer); y < len(newImg) - len(nKer); y++ {
+        for x := len(nKer); x < len(newImg[y]) - len(nKer); x++ {
+
+            newPixelValue := color.RGBA{}
+
+            // iterate over kernel
+            for i := range nKer {
+                for j := range nKer {
+                    r,g,b,a := newImg[y + i][x + j].RGBA()
+
+                    newPixelValue.R += uint8(r * nKer[i][j])
+                    newPixelValue.G += uint8(g * nKer[i][j])
+                    newPixelValue.B += uint8(b * nKer[i][j])
+                    newPixelValue.A += uint8(a * nKer[i][j])
+                }
+            }
+
+            newImg[y][x] = newPixelValue
+
+        }
+    }
+
+    fmt.Println("< filter applied");
+
+    return &newImg
 
 }
 
@@ -192,12 +277,11 @@ func main(){
 
     rgb_image := loadImage(filename)
     gray_image := rgbToGreyscale(rgb_image)
-    tensor := imageTotensor(gray_image)
+    tensor, size := imageTotensor(gray_image)
+    kenrel := getGaussianKernel(5, 2.5)
+    filtered := applyGaussuianFilter(size, tensor, &kenrel)
+    blured := tensorToImage(*filtered)
 
-    applyGaussuian(tensor, 2)
-
-
-    // exportImage(gray_image, "jpdg", "output", "grey-image");
-
+    exportImage(blured, "jpg", "output", "blureed-image");
 
 }
