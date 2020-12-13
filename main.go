@@ -177,7 +177,7 @@ func getGaussianKernel(size int, sigma float64) [][]uint32 {
     return gaussian_kernel
 }
 
-func applyGaussuianFilter(size image.Point, oldImg *[][]color.Color, kernel *[][]uint32) *[][]color.Color {
+func applyGaussuianFilter(size image.Point, oldImg [][]color.Color, kernel *[][]uint32) *[][]color.Color {
 
     fmt.Println("> Applying gaussian filter...");
 
@@ -188,7 +188,8 @@ func applyGaussuianFilter(size image.Point, oldImg *[][]color.Color, kernel *[][
         newImg[i] = make([]color.Color, size.X)
     }
 
-    copy(newImg, *oldImg)
+
+    var k_size uint8 = uint8(len(nKer) * len(nKer))
 
     // iterate over imge
     for y := len(nKer); y < len(newImg) - len(nKer); y++ {
@@ -199,7 +200,8 @@ func applyGaussuianFilter(size image.Point, oldImg *[][]color.Color, kernel *[][
             // iterate over kernel
             for i := range nKer {
                 for j := range nKer {
-                    r,g,b,a := newImg[y + i][x + j].RGBA()
+
+                    r,g,b,a := oldImg[y + i][x + j].RGBA()
 
                     newPixelValue.R += uint8(r * nKer[i][j])
                     newPixelValue.G += uint8(g * nKer[i][j])
@@ -208,7 +210,12 @@ func applyGaussuianFilter(size image.Point, oldImg *[][]color.Color, kernel *[][
                 }
             }
 
-            newImg[y][x] = newPixelValue
+            newPixelValue.R /= k_size
+            newPixelValue.G /= k_size
+            newPixelValue.B /= k_size
+            newPixelValue.A /= k_size
+
+            newImg[y + (len(nKer)/2)][x + (len(nKer)/2)] = newPixelValue
 
         }
     }
@@ -279,7 +286,7 @@ func main(){
     gray_image := rgbToGreyscale(rgb_image)
     tensor, size := imageTotensor(gray_image)
     kenrel := getGaussianKernel(5, 2.5)
-    filtered := applyGaussuianFilter(size, tensor, &kenrel)
+    filtered := applyGaussuianFilter(size, *tensor, &kenrel)
     blured := tensorToImage(*filtered)
 
     exportImage(blured, "jpg", "output", "blureed-image");
