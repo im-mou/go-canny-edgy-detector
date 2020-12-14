@@ -6,7 +6,7 @@ It uses gaussian blur to remove the noise and converts the image to Grayscale be
 To run the script, execute the following commands into you CLI.
 ```bash
 cd ~/go-canny-edgy-detector
-go run ./main.go "images/lena.jpg
+go run ./main.go "images/input.<png|jpg|jpeg>" "output.<png|jpg|jpeg>"
 ```
 
 The script takes a string argument to take the input filename with the path included and it outputs the resulting image into ./output folder.
