@@ -24,6 +24,7 @@ import (
     "errors"
     "image/png"
     "image/jpeg"
+    "strings"
     "github.com/montanaflynn/stats"
 )
 
@@ -42,6 +43,8 @@ func loadImage(url string) image.Image {
 	if err != nil {
         panic(err)
     }
+
+    fmt.Println("< Done");
 
     return imRgb
 }
@@ -70,7 +73,7 @@ func rgbToGreyscale(img image.Image) image.Image {
         panic("Image was not converted to grayscale")
     }
 
-    fmt.Println("< Conversion Successfull!");
+    fmt.Println("< Done");
     return grayImg
 }
 
@@ -84,7 +87,7 @@ func imageToTensor(img image.Image) (*[][]color.Gray, image.Point) {
     for j:=0; j<size.Y;j++{
         var y []color.Gray
         for i:=0; i<size.X;i++{
-            p := color.GrayModel.Convert(img.At(i,j)).(color.Gray)
+            p := color.GrayModel.Convert(img.At(j,i)).(color.Gray)
             y = append(y, p)
         }
         pixels = append(pixels,y)
@@ -171,18 +174,17 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
     fmt.Println("> Applying gaussian filter...");
 
     nKer := *kernel
-    // pad := int(len(nKer) / 2)
+    var k_upper int = (len(nKer)/2) + 1
+    var k_lower int = len(nKer)/2
+
     newImg := make([][]color.Gray, size.Y)
     for i := range newImg {
         newImg[i] = make([]color.Gray, size.X)
     }
 
-    var k_upper int = (len(nKer)/2) + 1
-    var k_lower int = len(nKer)/2
-
     // iterate over imge
-    for y := len(nKer); y < len(newImg) - len(nKer) ; y++ {
-        for x := k_lower +1; x < len(newImg[y]) - len(nKer); x++ {
+    for y := k_lower; y < len(newImg) - k_lower; y++ {
+        for x := k_lower; x < len(newImg[y]) - k_lower; x++ {
 
             var sum int = 0
             newPixelValue := color.Gray{}
@@ -195,34 +197,27 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
                 }
             }
 
-
             newPixelValue.Y = uint8(sum/273)
             newImg[y][x] = newPixelValue
         }
     }
 
-    fmt.Println("< filter applied");
+    fmt.Println("< Done");
 
     return &newImg
 
 }
 
-func getGradients() {
+func getGradients() {}
 
-}
+func nonMaximumSuppression() {}
 
-func nonMaximumSuppression() {
+func doubleThreadhold() {}
 
-}
+func applyHistersis() {}
 
-func doubleThreadhold() {
-}
 
-func applyHistersis( ){
-
-}
-
-func exportImage(img image.Image, encoding string, dest string, filename string) {
+func exportImage(img image.Image, dest string, filename string, encoding string) {
 
     fmt.Println("> Generating image...");
 
@@ -253,23 +248,48 @@ func exportImage(img image.Image, encoding string, dest string, filename string)
     fmt.Println("< Image genetarted Successfully!");
 }
 
-
 func main(){
 
     // parse arguments
     arg := os.Args[1:]
-    filename := arg[0]
+    input_filename := arg[0]
+    output := arg[1]
 
+    allowed_outputs := [3]string{"jpg", "jpeg", "png"}
+
+    // Split output string into array
+    output_arg := strings.Split(output, ".")
+    extension := output_arg[len(output_arg)-1]
+
+    // get file name witout .ext
+    output_filename_arr := output_arg[:len(output_arg)-1]
+    output_filename := strings.Join(output_filename_arr[:], ".")
+
+    valid_ext := false
+    for _, ext := range allowed_outputs {
+        if ext == extension {
+            valid_ext = true
+        }
+    }
+
+    if !valid_ext {
+        panic("Output file extension not allowed, use one of the following -> [\"jpg\", \"png\"]")
+    }
 
     fmt.Println("--- Script initialized! ---");
 
-    rgb_image := loadImage(filename)
+    rgb_image := loadImage(input_filename)
     gray_image := rgbToGreyscale(rgb_image)
     tensor, size := imageToTensor(gray_image)
     kenrel := getGaussianKernel(5, 2.5)
     filtered := applyGaussuianFilter(size, *tensor, &kenrel)
     blurred := tensorToImage(*filtered)
 
-    exportImage(blurred, "jpg", "output", "blurred-image");
+    exportImage(blurred, "output", output_filename, extension);
+
+    fmt.Printf("\n");
+    fmt.Println(">>> Script executed successfully <<<");
+    fmt.Println(">> Input file:", input_filename);
+    fmt.Printf(">> Ouput file: output/%v.%v\n", output_filename,extension);
 
 }
