@@ -27,11 +27,6 @@ import (
     "github.com/montanaflynn/stats"
 )
 
-// Pixel struct example
-type Pixel struct {
-    V int
-}
-
 func loadImage(url string) image.Image {
 
     fmt.Println("> Loading Image");
@@ -78,19 +73,20 @@ func rgbToGreyscale(img image.Image) image.Image {
     return grayImg
 }
 
-func imageTotensor(img image.Image) (*[][]color.Color, image.Point) {
+func imageToTensor(img image.Image) (*[][]color.Gray, image.Point) {
 
     fmt.Println("> Image to Tensor...");
 
     size := img.Bounds().Size()
-    var pixels [][]color.Color
+    var pixels [][]color.Gray
     //put pixels into two dimensional array
-    for i:=0; i<size.X;i++{
-      var y []color.Color
-      for j:=0; j<size.Y;j++{
-         y = append(y,img.At(i,j))
-      }
-      pixels = append(pixels,y)
+    for j:=0; j<size.Y;j++{
+        var y []color.Gray
+        for i:=0; i<size.X;i++{
+            p := color.GrayModel.Convert(img.At(i,j)).(color.Gray)
+            y = append(y, p)
+        }
+        pixels = append(pixels,y)
     }
 
     fmt.Println("< Done");
@@ -98,24 +94,16 @@ func imageTotensor(img image.Image) (*[][]color.Color, image.Point) {
     return &pixels, size
 }
 
-func tensorToImage(pixels [][]color.Color) image.Image {
+func tensorToImage(pixels [][]color.Gray) image.Image {
 
     fmt.Println("> Tensor to Image...");
 
     rect := image.Rect(0,0,len(pixels),len(pixels[0]))
-    newImage := image.NewRGBA(rect)
+    newImage := image.NewGray(rect)
 
     for x:=0; x<len(pixels); x++{
         for y:=0; y<len(pixels[0]); y++ {
-            q:=pixels[x]
-            if q==nil{
-                continue
-            }
-            p := pixels[x][y]
-            if p==nil{
-                continue
-            }
-            original,ok := color.RGBAModel.Convert(p).(color.RGBA)
+            original,ok := color.GrayModel.Convert(pixels[x][y]).(color.Gray)
             if ok{
                 newImage.Set(x,y,original)
             }
@@ -177,46 +165,38 @@ func getGaussianKernel(size int, sigma float64) [][]uint32 {
     return gaussian_kernel
 }
 
-func applyGaussuianFilter(size image.Point, oldImg [][]color.Color, kernel *[][]uint32) *[][]color.Color {
+func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]uint32) *[][]color.Gray {
 
     fmt.Println("> Applying gaussian filter...");
 
     nKer := *kernel
     // pad := int(len(nKer) / 2)
-    newImg := make([][]color.Color, size.Y)
+    newImg := make([][]color.Gray, size.Y)
     for i := range newImg {
-        newImg[i] = make([]color.Color, size.X)
+        newImg[i] = make([]color.Gray, size.X)
     }
 
-
-    var k_size uint8 = uint8(len(nKer) * len(nKer))
+    var k_upper int = (len(nKer)/2) + 1
+    var k_lower int = len(nKer)/2
 
     // iterate over imge
-    for y := len(nKer); y < len(newImg) - len(nKer); y++ {
-        for x := len(nKer); x < len(newImg[y]) - len(nKer); x++ {
+    for y := len(nKer); y < len(newImg) - len(nKer) ; y++ {
+        for x := k_lower +1; x < len(newImg[y]) - len(nKer); x++ {
 
-            newPixelValue := color.RGBA{}
+            var sum int = 0
+            newPixelValue := color.Gray{}
 
             // iterate over kernel
-            for i := range nKer {
-                for j := range nKer {
-
-                    r,g,b,a := oldImg[y + i][x + j].RGBA()
-
-                    newPixelValue.R += uint8(r * nKer[i][j])
-                    newPixelValue.G += uint8(g * nKer[i][j])
-                    newPixelValue.B += uint8(b * nKer[i][j])
-                    newPixelValue.A += uint8(a * nKer[i][j])
+            for i := -k_lower; i < k_upper; i++ {
+                for j := -k_lower; j < k_upper; j++ {
+                    pixel := oldImg[y + i][x + j].Y
+                    sum += int(pixel) * int(nKer[i + k_lower][j + k_lower])
                 }
             }
 
-            newPixelValue.R /= k_size
-            newPixelValue.G /= k_size
-            newPixelValue.B /= k_size
-            newPixelValue.A /= k_size
 
-            newImg[y + (len(nKer)/2)][x + (len(nKer)/2)] = newPixelValue
-
+            newPixelValue.Y = uint8(sum/273)
+            newImg[y][x] = newPixelValue
         }
     }
 
@@ -284,11 +264,11 @@ func main(){
 
     rgb_image := loadImage(filename)
     gray_image := rgbToGreyscale(rgb_image)
-    tensor, size := imageTotensor(gray_image)
+    tensor, size := imageToTensor(gray_image)
     kenrel := getGaussianKernel(5, 2.5)
     filtered := applyGaussuianFilter(size, *tensor, &kenrel)
-    blured := tensorToImage(*filtered)
+    blurred := tensorToImage(*filtered)
 
-    exportImage(blured, "jpg", "output", "blureed-image");
+    exportImage(blurred, "jpg", "output", "blurred-image");
 
 }
