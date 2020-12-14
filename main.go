@@ -56,6 +56,7 @@ func rgbToGreyscale(img image.Image) image.Image {
 
     for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
         for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+            // this line automatically converts RGBA -> Gray
             grayImg.Set(x, y, img.At(x, y))
         }
     }
