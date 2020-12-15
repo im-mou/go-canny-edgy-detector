@@ -82,6 +82,7 @@ func imageToTensor(img image.Image) (*[][]color.Gray, image.Point) {
 
 	size := img.Bounds().Size()
 	var pixels [][]color.Gray
+
 	//put pixels into two dimensional array
 	for j := 0; j < size.Y; j++ {
 		var y []color.Gray
@@ -154,12 +155,9 @@ func getGaussianKernel(size int, sigma float64) ([][]uint32, float64) {
 	}
 
 	// normalize
-	scalar := 1.0
+	scalar := 1.0 / kern2d[0][0]
 	for i := range kern1d {
 		for j := range kern1d {
-			if i == 0 && j == 0 {
-				scalar = 1.0 / kern2d[i][j]
-			}
 			gaussian_filter[i][j] = uint32(math.Floor((kern2d[i][j] / kern2d_csum) * scalar))
 		}
 	}
@@ -182,7 +180,7 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
 		newImg[i] = make([]color.Gray, size.X)
 	}
 
-	// iterate over imge
+	// Convolve filter mask over image
 	for y := k_lower; y < len(newImg)-k_lower; y++ {
 		for x := k_lower; x < len(newImg[y])-k_lower; x++ {
 
@@ -196,7 +194,7 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
 					sum += int(pixel) * int(nKer[i+k_lower][j+k_lower])
 				}
 			}
-
+			// calculate sum average
 			newPixelValue.Y = uint8(sum / int(k_scalar))
 			newImg[y][x] = newPixelValue
 		}
