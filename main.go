@@ -1,4 +1,5 @@
 // Canny edge detector implementation in golang
+// https://en.wikipedia.org/wiki/Canny_edge_detector
 
 /**
 * To-do:
@@ -6,6 +7,7 @@
 * - Convert the image color to grey scale
 * - apply gaussian filter to smooth the image
 * - Find the intensity gradient of the image
+*   - Sobel operator
 * - Edge thinning -> non-maximum suppression
 * - Remove weak gradients -> Double threshold
 * - Apply histeresis
@@ -118,6 +120,47 @@ func tensorToImage(pixels [][]color.Gray) image.Image {
 	return newImage
 }
 
+func convolveKernel(img [][]color.Gray, kernel [][]float64) *[][]color.Gray {
+
+	fmt.Println("> Applying Kernel...")
+
+	ker := kernel
+	rows := len(img)
+	columns := len(img[0])
+
+	filtered := make([][]color.Gray, rows)
+	for i := 0; i < columns; i++ {
+		filtered[i] = make([]color.Gray, columns)
+	}
+
+	var newValue float64
+
+	// convolve kernel over image
+
+	min := (len(kernel) / 2)
+	max := (len(kernel) / 2) + 1
+
+	for y := min; y < rows-max; y++ {
+		for x := min; x < columns-max; x++ {
+			newValue = 0.
+			for i := -len(kernel) / 2; i < max; i++ {
+				for j := -len(kernel) / 2; j < max; j++ {
+					pixel := img[y-i][x-j].Y
+					newValue += float64(pixel) * ker[i+min][j+min]
+				}
+			}
+
+			// save new pixel
+			filtered[y+min][x+min].Y = uint8(newValue)
+		}
+	}
+
+	fmt.Println("< Done")
+
+	return &filtered
+
+}
+
 func getGaussianKernel(size int, sigma float64) ([][]uint32, float64) {
 
 	fmt.Println("> Generating gaussian filter...")
@@ -206,7 +249,68 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
 
 }
 
-func getGradients() {}
+func getSobelGradients(img [][]color.Gray) *[][]color.Gray {
+
+	fmt.Println("> Applying Sobel Gradient...")
+
+	gx := [3][3]float64{{-1., 0., 1.}, {-2., 0., 2.}, {-1., 0., 1.}}
+	gy := [3][3]float64{{-1., -2., -1.}, {0., 0., 0.}, {1., 2., 1.}}
+	sharpen_kernel := [][]float64{{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}}
+
+	// sharpen the image for better gradient results
+	img = *convolveKernel(img, sharpen_kernel)
+
+	threshold := 255 * 0.3
+	rows := len(img)
+	columns := len(img[0])
+
+	magnitude := make([][]color.Gray, rows)
+	for i := 0; i < columns; i++ {
+		magnitude[i] = make([]color.Gray, columns)
+	}
+
+	var sx, sy float64
+
+	// convolve sobel kernel over image
+	for y := 1; y < rows-2; y++ {
+		for x := 1; x < columns-2; x++ {
+
+			sx = 0.
+			sy = 0.
+
+			// convolve kernel over image slice
+			for i := -1; i < 2; i++ {
+				for j := -1; j < 2; j++ {
+
+					pixel := img[y-i][x-j].Y
+
+					sx += float64(pixel) * gx[i+1][j+1]
+					sy += float64(pixel) * gy[i+1][j+1]
+
+				}
+			}
+
+			// remove neg. values
+			sx = math.Abs(sx)
+			sy = math.Abs(sy)
+
+			gradient := math.Ceil(math.Sqrt(math.Pow(sx, 2) + math.Pow(sy, 2)))
+
+			// apply threshold
+			if math.Max(gradient, threshold) == threshold {
+				gradient = 0.
+			}
+
+			// save new pixel
+			magnitude[y+1][x+1].Y = uint8(gradient)
+		}
+	}
+
+	fmt.Println("< Done")
+
+	return &magnitude
+
+}
 
 func nonMaximumSuppression() {}
 
@@ -280,9 +384,11 @@ func main() {
 	tensor, size := imageToTensor(gray_image)
 	kenrel, k_scalar := getGaussianKernel(5, 2.5)
 	filtered := applyGaussuianFilter(size, *tensor, &kenrel, k_scalar)
-	blurred := tensorToImage(*filtered)
+	sobel := getSobelGradients(*filtered)
 
-	exportImage(blurred, "output", output_filename, extension)
+	new_image := tensorToImage(*sobel)
+
+	exportImage(new_image, "output", output_filename, extension)
 
 	fmt.Println("====================================")
 	fmt.Println(">>> Script executed successfully <<<")
