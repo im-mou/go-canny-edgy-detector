@@ -15,16 +15,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image"
-	"log"
-	"os"
-	// "math"
-	"errors"
-	"github.com/montanaflynn/stats"
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"log"
+	"math"
+	"os"
 	"strings"
 )
 
@@ -118,33 +117,30 @@ func tensorToImage(pixels [][]color.Gray) image.Image {
 	return newImage
 }
 
-func getGaussianKernel(size int, sigma float64) [][]uint32 {
+func getGaussianKernel(size int, sigma float64) ([][]uint32, float64) {
 
 	fmt.Println("> Generating gaussian filter...")
 
-	// https://stackoverflow.com/questions/29731726/how-to-calculate-a-gaussian-kernel-matrix-efficiently-in-numpy
+	// https://homepages.inf.ed.ac.uk/rbf/HIPR2/gsmooth.htm
 	k_size := size
-	delta := (sigma * 2) / float64(k_size)
-	linspace := make([]float64, k_size+1)
-	cfd := make([]float64, len(linspace))
 
-	kern1d := make([]float64, len(linspace)-1)
-	kern2d := make([][]float64, len(kern1d))
-	gaussian_kernel := make([][]uint32, len(kern1d))
+	kern1d := make([]float64, k_size)
+	kern2d := make([][]float64, k_size)
+	gaussian_filter := make([][]uint32, k_size)
 
+	// initialize matrices
 	for i := range kern2d {
-		kern2d[i] = make([]float64, len(kern1d))
-		gaussian_kernel[i] = make([]uint32, len(gaussian_kernel))
+		kern2d[i] = make([]float64, k_size)
+		gaussian_filter[i] = make([]uint32, k_size)
 	}
 
-	// Normal cumulative distribution function
-	for i := range linspace {
-		linspace[i] = -sigma + delta*float64(i)
-		cfd[i] = stats.NormCdf(linspace[i], 0, delta)
-	}
+	// Calculate 1-D Gaussian distribution
+	two_sigma_sq := 2 * math.Pow(sigma, 2)
+	calc1 := 1.0 / (math.Sqrt(2*math.Pi) * sigma)
 
-	for i := 0; i < len(linspace)-1; i++ {
-		kern1d[i] = cfd[i+1] - cfd[i]
+	for i := -size / 2; i < (size/2)+1; i++ {
+		numerator := math.Pow(float64(i), 2)
+		kern1d[i+(size/2)] = calc1 * math.Exp(-(numerator / two_sigma_sq))
 	}
 
 	//outer product
@@ -158,18 +154,22 @@ func getGaussianKernel(size int, sigma float64) [][]uint32 {
 	}
 
 	// normalize
+	scalar := 1.0
 	for i := range kern1d {
 		for j := range kern1d {
-			gaussian_kernel[i][j] = uint32((kern2d[i][j] / kern2d_csum) * 273)
+			if i == 0 && j == 0 {
+				scalar = 1.0 / kern2d[i][j]
+			}
+			gaussian_filter[i][j] = uint32(math.Floor((kern2d[i][j] / kern2d_csum) * scalar))
 		}
 	}
 
 	fmt.Println("< Done")
 
-	return gaussian_kernel
+	return gaussian_filter, scalar
 }
 
-func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]uint32) *[][]color.Gray {
+func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]uint32, k_scalar float64) *[][]color.Gray {
 
 	fmt.Println("> Applying gaussian filter...")
 
@@ -197,7 +197,7 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
 				}
 			}
 
-			newPixelValue.Y = uint8(sum / 273)
+			newPixelValue.Y = uint8(sum / int(k_scalar))
 			newImg[y][x] = newPixelValue
 		}
 	}
@@ -280,15 +280,16 @@ func main() {
 	rgb_image := loadImage(input_filename)
 	gray_image := rgbToGreyscale(rgb_image)
 	tensor, size := imageToTensor(gray_image)
-	kenrel := getGaussianKernel(5, 2.5)
-	filtered := applyGaussuianFilter(size, *tensor, &kenrel)
+	kenrel, k_scalar := getGaussianKernel(5, 2.5)
+	filtered := applyGaussuianFilter(size, *tensor, &kenrel, k_scalar)
 	blurred := tensorToImage(*filtered)
 
 	exportImage(blurred, "output", output_filename, extension)
 
-	fmt.Printf("\n")
+	fmt.Println("====================================")
 	fmt.Println(">>> Script executed successfully <<<")
 	fmt.Println(">> Input file:", input_filename)
 	fmt.Printf(">> Ouput file: output/%v.%v\n", output_filename, extension)
+	fmt.Println("====================================")
 
 }
