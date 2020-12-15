@@ -122,8 +122,6 @@ func tensorToImage(pixels [][]color.Gray) image.Image {
 
 func convolveKernel(img [][]color.Gray, kernel [][]float64) *[][]color.Gray {
 
-	fmt.Println("> Applying Kernel...")
-
 	ker := kernel
 	rows := len(img)
 	columns := len(img[0])
@@ -154,8 +152,6 @@ func convolveKernel(img [][]color.Gray, kernel [][]float64) *[][]color.Gray {
 			filtered[y+min][x+min].Y = uint8(newValue)
 		}
 	}
-
-	fmt.Println("< Done")
 
 	return &filtered
 
@@ -249,7 +245,7 @@ func applyGaussuianFilter(size image.Point, oldImg [][]color.Gray, kernel *[][]u
 
 }
 
-func getSobelGradients(img [][]color.Gray) *[][]color.Gray {
+func applySobelGradients(img [][]color.Gray) *[][]color.Gray {
 
 	fmt.Println("> Applying Sobel Gradient...")
 
@@ -258,7 +254,9 @@ func getSobelGradients(img [][]color.Gray) *[][]color.Gray {
 	sharpen_kernel := [][]float64{{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}}
 
 	// sharpen the image for better gradient results
+	fmt.Println(">> Applying Sharpening Kernel...")
 	img = *convolveKernel(img, sharpen_kernel)
+	fmt.Println("<< Done")
 
 	threshold := 255 * 0.3
 	rows := len(img)
@@ -384,7 +382,7 @@ func main() {
 	tensor, size := imageToTensor(gray_image)
 	kenrel, k_scalar := getGaussianKernel(5, 2.5)
 	filtered := applyGaussuianFilter(size, *tensor, &kenrel, k_scalar)
-	sobel := getSobelGradients(*filtered)
+	sobel := applySobelGradients(*filtered)
 
 	new_image := tensorToImage(*sobel)
 
